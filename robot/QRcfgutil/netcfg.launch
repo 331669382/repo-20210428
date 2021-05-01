@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="netcfg" type="netcfg_node" name="netcfg.py" output="screen" respawn="true">
+  </node>
+</launch>

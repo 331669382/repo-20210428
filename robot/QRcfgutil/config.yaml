@@ -1,0 +1,2 @@
+detectInterval: 5
+wifiDev: [wl0, wl1]

@@ -1,0 +1,45 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 7832615945488665424 (0x6cb30ab414e98b50)
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: CN = mcurobot CA
+        Validity
+            Not Before: Apr 26 13:55:00 2020 GMT
+            Not After : Apr 26 13:54:00 2030 GMT
+        Subject: CN = 23059876
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:01:e5:8b:68:00:a8:06:e4:2e:d5:d8:59:70:9a:
+                    8b:a7:ab:e9:22:6e:9a:85:7e:64:91:77:d5:9e:be:
+                    2f:e0:40:b4:b4:c9:02:fe:32:16:f9:8d:b0:03:ff:
+                    ab:5b:96:99:71:4e:11:37:f5:ac:6a:9c:a8:41:ee:
+                    c5:ab:91:e7:53
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                9D:26:A3:ED:67:EE:40:1A:1B:BE:3A:56:16:1F:DD:FD:1F:37:EA:9A
+            X509v3 Key Usage: 
+                Digital Signature, Key Encipherment, Data Encipherment, Key Agreement
+            X509v3 Extended Key Usage: 
+                TLS Web Client Authentication
+    Signature Algorithm: ecdsa-with-SHA256
+         30:46:02:21:00:9b:8a:87:00:0c:bd:29:3e:41:84:dc:fc:b0:
+         8e:a7:0c:a3:48:96:0a:77:29:53:2a:36:e6:f8:45:99:3f:d1:
+         af:02:21:00:af:f4:10:61:29:a0:aa:0f:a6:c0:85:2c:01:63:
+         07:f8:bb:36:75:ab:79:64:99:3b:b8:2a:f8:c3:d0:80:a6:5f
+-----BEGIN CERTIFICATE-----
+MIIBcTCCARagAwIBAgIIbLMKtBTpi1AwCgYIKoZIzj0EAwIwFjEUMBIGA1UEAxML
+bWN1cm9ib3QgQ0EwHhcNMjAwNDI2MTM1NTAwWhcNMzAwNDI2MTM1NDAwWjATMREw
+DwYDVQQDEwgyMzA1OTg3NjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABAHli2gA
+qAbkLtXYWXCai6er6SJumoV+ZJF31Z6+L+BAtLTJAv4yFvmNsAP/q1uWmXFOETf1
+rGqcqEHuxauR51OjUTBPMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFJ0mo+1n7kAa
+G746VhYf3f0fN+qaMAsGA1UdDwQEAwIDuDATBgNVHSUEDDAKBggrBgEFBQcDAjAK
+BggqhkjOPQQDAgNJADBGAiEAm4qHAAy9KT5BhNz8sI6nDKNIlgp3KVMqNub4RZk/
+0a8CIQCv9BBhKaCqD6bAhSwBYwf4uzZ1q3lkmTu4KvjD0ICmXw==
+-----END CERTIFICATE-----

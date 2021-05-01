@@ -1,0 +1,6 @@
+string name
+string arg
+---
+string msg
+int64 code
+string[] list
