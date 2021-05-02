@@ -155,7 +155,11 @@ func main() {
 						switch connectRequest.Message.Status {
 						case "new":
 							var i int
-							postAuth := PostAuth{}
+							postAuth := PostAuth{
+								Version: connectRequest.Version,
+								Type:    "connect-postauth",
+								Trans:   connectRequest.Trans,
+							}
 							for _, authClient := range _config.Authorizedclients {
 								if authClient == connectRequest.Message.Target.ID {
 									break
@@ -164,8 +168,8 @@ func main() {
 							}
 							if i == len(_config.Authorizedclients) {
 								Info.Printf("receive a connect request from unauthorizedclient %s\n", connectRequest.Message.Target.ID)
-								postAuth.Fin = true
-								postAuth.Status = "failed"
+								postAuth.Message.Fin = true
+								postAuth.Message.Status = "failed"
 								err := ws.WriteJSON(postAuth)
 								if err != nil {
 									Error.Printf("send postAuth to registy err:%v, try to reconnect\n", err)
@@ -174,8 +178,8 @@ func main() {
 								continue
 							}
 							Info.Printf("receive a connect request from authorizedclient %s\n", connectRequest.Message.Target.ID)
-							postAuth.Fin = false
-							postAuth.Status = "success"
+							postAuth.Message.Fin = false
+							postAuth.Message.Status = "success"
 							err := ws.WriteJSON(postAuth)
 							if err != nil {
 								Error.Printf("send postAuth to registy err:%v, try to reconnect\n", err)

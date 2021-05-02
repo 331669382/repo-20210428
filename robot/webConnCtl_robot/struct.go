@@ -136,9 +136,20 @@ type ConnectReq struct {
 	}
 }
 type PostAuth struct {
-	Status string `json:"status"`
-	Fin    bool   `json:"fin"`
+	Version string `json:"version"`
+	Entity  struct {
+		Role string `json:"role"`
+		ID   string `json:"id"`
+	} `json:"entity"`
+	Type    string `json:"type"`
+	Trans   string `json:"trans"`
+	Time    string `json:"time"`
+	Message struct {
+		Status string `json:"status"`
+		Fin    bool   `json:"fin"`
+	}
 }
+
 type ConnectResp struct {
 	Version string `json:"version"`
 	Entity  struct {

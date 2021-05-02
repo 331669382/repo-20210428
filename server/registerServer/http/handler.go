@@ -181,7 +181,7 @@ func connectHandler(c *gin.Context) {
 				websocket.OnlineRobotWs[j.Message.Target.ID].Close()
 				return
 			}
-			if postAuthResp.Status != "success" {
+			if postAuthResp.Message.Status != "success" {
 				e := fmt.Sprintf("the client is not in the robot's authorized list")
 				resp.Message.Status = "error"
 				resp.Message.Error = e
