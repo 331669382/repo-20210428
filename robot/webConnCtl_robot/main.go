@@ -145,54 +145,65 @@ func main() {
 						continue
 					}
 					switch m["type"].(string) {
-					case "connect":
+					case "connect-request":
 						connectRequest := ConnectReq{}
 						err := json.Unmarshal(msg, &connectRequest)
 						if err != nil {
 							Error.Printf("read json msg with a wrong connectRequest:%v, msg:%s\n", err, string(msg))
 							continue
 						}
+						switch connectRequest.Message.Status {
+						case "new":
+							var i int
+							postAuth := PostAuth{}
+							for _, authClient := range _config.Authorizedclients {
+								if authClient == connectRequest.Message.Target.ID {
+									break
+								}
+								i++
+							}
+							if i == len(_config.Authorizedclients) {
+								Info.Printf("receive a connect request from unauthorizedclient %s\n", connectRequest.Message.Target.ID)
+								postAuth.Fin = true
+								postAuth.Status = "failed"
+								err := ws.WriteJSON(postAuth)
+								if err != nil {
+									Error.Printf("send postAuth to registy err:%v, try to reconnect\n", err)
+									break
+								}
+								continue
+							}
+							Info.Printf("receive a connect request from authorizedclient %s\n", connectRequest.Message.Target.ID)
+							postAuth.Fin = false
+							postAuth.Status = "success"
+							err := ws.WriteJSON(postAuth)
+							if err != nil {
+								Error.Printf("send postAuth to registy err:%v, try to reconnect\n", err)
+								break
+							}
+						case "preauth":
+						case "established":
+						}
+					case "connect-response":
+						connectResp := ConnectResp{}
+						err := json.Unmarshal(msg, &connectResp)
+						if err != nil {
+							Error.Printf("read json msg with a wrong connectRequest:%v, msg:%s\n", err, string(msg))
+							continue
+						}
 						defaulfMsg := ConnectResp{
-							Version: connectRequest.Version,
+							Version: connectResp.Version,
 							Type:    "connect-response",
 							Time:    fmt.Sprintf("%d", time.Now().Unix()),
-							Trans:   connectRequest.Trans,
+							Trans:   connectResp.Trans,
 						}
 						defaulfMsg.Entity.Role = "robot"
 						defaulfMsg.Entity.ID = _config.Entity.ID
-						defaulfMsg.Message.Fin = false
-						for i, Authorizedclient := range _config.Authorizedclients {
-							if connectRequest.Entity.ID == Authorizedclient {
-								break
-							}
-							if i == len(_config.Authorizedclients) {
-								Error.Printf("unAuthorizedclient\n")
-								defaulfMsg.Message.Status = "error"
-								defaulfMsg.Message.Error = "unauthorized client"
-								err := ws.WriteJSON(defaulfMsg)
-								if err != nil {
-									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
-									break
-								}
-								continue
-							}
-						}
-
-						switch connectRequest.Message.Status {
-						case "new":
-							_state = "connecting"
-							Info.Println("get a connectRequest,State: connecting")
-							if len(connectRequest.Transit.Port) != len(_defaultChannel) {
-								Error.Printf("len(connectRequest.Transit.Port)!=len(defaultChannel)\n")
-								defaulfMsg.Message.Status = "error"
-								defaulfMsg.Message.Error = "len(connectRequest.Transit.Port)!=len(defaultChannel)"
-								err := ws.WriteJSON(defaulfMsg)
-								if err != nil {
-									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
-									break
-								}
-								continue
-							}
+						defaulfMsg.Message.Fin = true
+						switch connectResp.Message.Status {
+						case "pending":
+							_state = "pending"
+							Info.Printf("get a connectResponse from registry,State: pending\n")
 							agentConfig := AgentConfig{
 								Role: "server",
 							}
@@ -210,20 +221,23 @@ func main() {
 									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
 									break
 								}
+								_state = "ready"
 								continue
 							}
 							confRespBody, _ := ioutil.ReadAll(confResp.Body)
+							confResp.Body.Close()
 							confRespJSON := NormalResp{}
 							err = json.Unmarshal(confRespBody, &confRespJSON)
 							if err != nil {
-								Error.Printf("recv connectResp from agent err:%v,body:%s\n", err, confRespBody)
+								Error.Printf("recv config Resp from agent err:%v,body:%s\n", err, confRespBody)
 								defaulfMsg.Message.Status = "error"
-								defaulfMsg.Message.Error = fmt.Sprintf("recv connectResp from agent err:%v,body:%s", err, confRespBody)
+								defaulfMsg.Message.Error = fmt.Sprintf("recv config Resp from agent err:%v,body:%s", err, confRespBody)
 								err := ws.WriteJSON(defaulfMsg)
 								if err != nil {
 									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
 									break
 								}
+								_state = "ready"
 								continue
 							}
 							if confRespJSON.Code != succCode {
@@ -235,57 +249,116 @@ func main() {
 									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
 									break
 								}
+								_state = "ready"
 								continue
 							}
-							conn := AgentConnect{
+							p2pConn := AgentConnect{
 								Role:           "server",
 								Cleanupoldtask: clean,
 							}
-							if _config.Entity.Role == "client" {
-								conn.Role = "client"
+							for _, addr := range connectResp.Message.Peer.Addresses {
+								for i, c := range _defaultChannel {
+									p2pConn.Dial = append(p2pConn.Dial, DialOrListen{
+										Name:  c.Name,
+										Proto: c.Proto,
+										Host:  addr.Address,
+										Port:  addr.Port + i,
+									})
+								}
 							}
 							for i, c := range _defaultChannel {
-								conn.Dial = append(conn.Dial, DialOrListen{
-									Name:  c.Name,
-									Proto: c.Proto,
-									Host:  connectRequest.Transit.Host,
-									Port:  connectRequest.Transit.Port[i],
-								})
-								conn.Listen = append(conn.Listen, DialOrListen{
+								p2pConn.Listen = append(p2pConn.Listen, DialOrListen{
 									Name:  c.Name,
 									Proto: c.Proto,
 									Host:  "0.0.0.0",
 									Port:  _config.AgentBasePort + i,
 								})
 							}
-							connectReqBody, _ := json.Marshal(conn)
-							connectReq, _ := http.NewRequest("POST", "http://"+_config.AgentURI+"/conn/connect", bytes.NewBuffer(connectReqBody))
-							connResp, err := http.DefaultClient.Do(connectReq)
+							p2pConnReqBody, _ := json.Marshal(p2pConn)
+							p2pConnReq, _ := http.NewRequest("POST", "http://"+_config.AgentURI+"/conn/connect", bytes.NewBuffer(p2pConnReqBody))
+							p2pConnResp, err := http.DefaultClient.Do(p2pConnReq)
+							p2pWaitTime := _config.WaitP2PConnect
 							if err != nil {
-								Error.Printf("send connect request to agent err:%v\n", err)
+								Error.Printf("send p2p connect request to agent err:%v,try to connect transitServer\n", err)
+								p2pWaitTime = 0
+							} else {
+								p2pConnRespBody, _ := ioutil.ReadAll(p2pConnResp.Body)
+								p2pConnResp.Body.Close()
+								p2pConnRespJSON := NormalResp{}
+								err = json.Unmarshal(p2pConnRespBody, &p2pConnRespJSON)
+								if err != nil {
+									Error.Printf("recv p2p connectResp from agent err:%v,body:%s,try to connect transitServer\n", err, p2pConnRespBody)
+									p2pWaitTime = 0
+								} else {
+									if p2pConnRespJSON.Code != succCode {
+										Error.Printf("agent p2p connect error %s,try to connect transitServer\n", p2pConnRespJSON.Msg)
+										p2pWaitTime = 0
+									}
+								}
+
+							}
+							time.Sleep(time.Second * time.Duration(p2pWaitTime))
+							statuResp, err := http.Get("http://" + _config.AgentURI + "statu")
+							if err != nil {
+								Error.Printf("get agent statu Resp err:%v\n", err)
 								defaulfMsg.Message.Status = "error"
-								defaulfMsg.Message.Error = fmt.Sprintf("send connect request to agent err:%v", err)
+								defaulfMsg.Message.Error = fmt.Sprintf("get agent statu Resp err:%v", err)
 								err := ws.WriteJSON(defaulfMsg)
 								if err != nil {
 									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
 									break
 								}
+								_state = "ready"
 								continue
 							}
-							connRespBody, _ := ioutil.ReadAll(connResp.Body)
-							connRespJSON := NormalResp{}
-							json.Unmarshal(connRespBody, &connRespJSON)
-							if connRespJSON.Code != succCode {
-								defaulfMsg.Message.Status = "error"
-								Error.Printf("agent connect error %s\n", connRespJSON.Msg)
-								defaulfMsg.Message.Error = fmt.Sprintf("agent connect error %s", connRespJSON.Msg)
-								err := ws.WriteJSON(defaulfMsg)
+							statuRespBody, _ := ioutil.ReadAll(statuResp.Body)
+							statuResp.Body.Close()
+							if string(statuRespBody) != "success" {
+								transitConn := AgentConnect{
+									Role:           "server",
+									Cleanupoldtask: clean,
+								}
+								for i, c := range _defaultChannel {
+									transitConn.Dial = append(transitConn.Dial, DialOrListen{
+										Name:  c.Name,
+										Proto: c.Proto,
+										Host:  connectResp.Message.Relay.Name,
+										Port:  connectResp.Message.Relay.Ctlport + i,
+									})
+								}
+								transitConnReqBody, _ := json.Marshal(transitConn)
+								tranConnReq, _ := http.NewRequest("POST", "http://"+_config.AgentURI+"/conn/connect", bytes.NewBuffer(transitConnReqBody))
+								transitConnResp, err := http.DefaultClient.Do(tranConnReq)
 								if err != nil {
-									Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
-									break
+									Error.Printf("send transit connect request to agent err:%v\n", err)
+									defaulfMsg.Message.Status = "error"
+									defaulfMsg.Message.Error = fmt.Sprintf("send transit connect request to agent err:%v", err)
+									err := ws.WriteJSON(defaulfMsg)
+									if err != nil {
+										Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
+										break
+									}
+									_state = "ready"
+									continue
+								}
+								transitConnRespBody, _ := ioutil.ReadAll(transitConnResp.Body)
+								transitConnResp.Body.Close()
+								transitConnRespJSON := NormalResp{}
+								json.Unmarshal(transitConnRespBody, &transitConnRespJSON)
+								if transitConnRespJSON.Code != succCode {
+									defaulfMsg.Message.Status = "error"
+									Error.Printf("agent connect error %s\n", transitConnRespJSON.Msg)
+									defaulfMsg.Message.Error = fmt.Sprintf("agent connect error %s", transitConnRespJSON.Msg)
+									err := ws.WriteJSON(defaulfMsg)
+									if err != nil {
+										Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
+										break
+									}
+									_state = "ready"
+									continue
 								}
 							}
-							defaulfMsg.Message.Status = "pending"
+							defaulfMsg.Message.Fin = false
 							err = ws.WriteJSON(defaulfMsg)
 							if err != nil {
 								Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
@@ -293,9 +366,9 @@ func main() {
 							}
 							_state = "operational"
 							Info.Println("State: operational")
-						case "preauth":
 						}
 					case "shutdown":
+						_state = "ready"
 						trans := ""
 						if _, ok := m["trans"].(string); ok {
 							trans = m["trans"].(string)
@@ -327,7 +400,6 @@ func main() {
 							Error.Printf("send shutdown-response to registy err:%v, try to reconnect\n", err)
 							break
 						}
-						_state = "ready"
 						Info.Println("shutdown success,State:ready")
 					default:
 						e := fmt.Sprintf("read json msg with an unexpected type:[%v]", m["type"])

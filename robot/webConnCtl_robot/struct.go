@@ -83,8 +83,10 @@ type Config struct {
 		Certificate string `json:"certificate"`
 		Key         string `json:"key"`
 	} `json:"entity"`
-	Authorizedclients []string `json:"authorizedclients"`
-	Adminport         string   `json:"adminport"`
+	WaitP2PConnect     int64    `json:"waitp2pconnect"`
+	WaitTransitConnect int64    `json:"waittransitconnect"`
+	Authorizedclients  []string `json:"authorizedclients"`
+	Adminport          string   `json:"adminport"`
 }
 
 type RegisterReq struct {
@@ -131,12 +133,11 @@ type ConnectReq struct {
 			ID   string `json:"id"`
 		} `json:"target"`
 		Authtype string `json:"authtype"`
-		Peer AddressInfo
 	}
-	Transit struct {
-		Host string `json:"host,omitempty"`
-		Port []int  `json:"port,omitempty"`
-	}
+}
+type PostAuth struct {
+	Status string `json:"status"`
+	Fin    bool   `json:"fin"`
 }
 type ConnectResp struct {
 	Version string `json:"version"`
@@ -154,7 +155,7 @@ type ConnectResp struct {
 		Peer   AddressInfo `json:"peer,omitempty"`
 		Relay  struct {
 			Name    string `json:"name"`
-			Ctlport string `json:"ctlport"`
+			Ctlport int    `json:"ctlport"`
 			Expire  string `json:"expire"`
 			Token   string `json:"token"`
 			Key     string `json:"key"`
