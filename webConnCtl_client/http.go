@@ -55,6 +55,7 @@ func connectHandler(c *gin.Context) {
 		return
 	}
 	b, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
 	registerResp := RegisterResp{}
 	err = json.Unmarshal(b, &registerResp)
 	if err != nil {
@@ -100,6 +101,7 @@ func connectHandler(c *gin.Context) {
 		return
 	}
 	b_, _ := ioutil.ReadAll(resp_.Body)
+	resp_.Body.Close()
 	connResp := ConnectResp{}
 	err = json.Unmarshal(b_, &connResp)
 	if err != nil {
@@ -156,6 +158,7 @@ func connectHandler(c *gin.Context) {
 		return
 	}
 	confRespBody, _ := ioutil.ReadAll(confResp.Body)
+	confResp.Body.Close()
 	confRespJSON := NormalResp{}
 	err = json.Unmarshal(confRespBody, &confRespJSON)
 	if err != nil {
@@ -234,6 +237,7 @@ func connectHandler(c *gin.Context) {
 		return
 	}
 	agentConnRespBody, err := ioutil.ReadAll(agentConnResp.Body)
+	agentConnResp.Body.Close()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -301,6 +305,7 @@ func queryHandler(c *gin.Context) {
 		return
 	}
 	b, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
 	if err != nil {
 		Info.Println(err)
 		return
