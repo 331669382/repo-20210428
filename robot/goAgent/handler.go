@@ -21,6 +21,7 @@ var delaylistLock sync.Mutex
 var delayList map[string]interface{} = make(map[string]interface{})
 var flushRate int = 120
 var channelSelect chan string = make(chan string, 1)
+var statu string = "ready"
 
 //存储旧任务的CTX
 var allCtx = struct {
@@ -100,6 +101,7 @@ func ConnectHandler(c *gin.Context) {
 
 	switch j.Role {
 	case "server":
+		statu = "connecting"
 		ctx, _ := addTask()
 		dispatcher := newDispatcher(CFG)
 		go dispatchWorker(ctx, dispatcher)
@@ -110,6 +112,7 @@ func ConnectHandler(c *gin.Context) {
 				Msg:  err.Error(),
 			})
 			cleanUpOldTask()
+			statu = "ready"
 			Info.Println("cleanUpOldTask")
 			return
 		}
@@ -145,6 +148,7 @@ func ConnectHandler(c *gin.Context) {
 			}
 		}
 		dialCTX, dialCancel := context.WithCancel(ctx)
+		var isFish bool
 		for _, dial := range j.Dial {
 			i := 0
 			for ; i < len(dialErrHost); i++ {
@@ -155,13 +159,10 @@ func ConnectHandler(c *gin.Context) {
 			if i != len(dialErrHost) {
 				continue
 			}
-			if err := startDial(dialCTX, dial, dispatcher); err != nil {
+			if err := startDial(dialCTX, dial, dispatcher, isFish); err != nil {
 				Error.Printf("startDial:%v\n", err)
 				dialErrHost = append(dialErrHost, dial.Host)
 			}
-		}
-		if len(connMapD) == len(CFG.Channels) {
-			dialFinish <- struct{}{}
 		}
 		for _, dial := range j.Dial {
 			i := 0
@@ -180,7 +181,9 @@ func ConnectHandler(c *gin.Context) {
 				Msg:  "Both dial and listen failed",
 			})
 			cleanUpOldTask()
+			statu = "ready"
 			Info.Println("cleanUpOldTask")
+			return
 		} else if len(dialsucc) == 0 {
 			channelSelect <- "L"
 			dialCancel()
@@ -210,7 +213,7 @@ func ConnectHandler(c *gin.Context) {
 						channelSelect <- "L"
 						Info.Println("Choose Listen channel to use")
 						dialCancel()
-					case <-time.After(time.Second * 2):
+					case <-time.After(time.Second * time.Duration(_config.DialOrListenChooseTimeS)):
 						channelSelect <- "D"
 						Info.Println("Choose Dial channel to use")
 						listenCancel()
@@ -226,8 +229,9 @@ func ConnectHandler(c *gin.Context) {
 				Msg:  "Both dial and listen succeed,server will chose faster one to use",
 			})
 		}
-		go StratDelayCheck(ctx, flushRate)
+		//go StratDelayCheck(ctx, flushRate)
 	case "client":
+		statu = "connecting"
 		ctx, _ := addTask()
 		dispatcher := newDispatcher(CFG)
 		go dispatchWorker(ctx, dispatcher)
@@ -238,11 +242,43 @@ func ConnectHandler(c *gin.Context) {
 				Msg:  err.Error(),
 			})
 			cleanUpOldTask()
+			statu = "ready"
 			Info.Println("cleanUpOldTask")
 			return
 		}
 		var dialErrHost []string
+		var listenErrHost []string
 		var dialsucc []string
+		var listensucc []string
+		listenCTX, listenCancel := context.WithCancel(ctx)
+		for _, listen := range j.Listen {
+			i := 0
+			for ; i < len(listenErrHost); i++ {
+				if listenErrHost[i] == listen.Host {
+					break
+				}
+			}
+			if i != len(listenErrHost) {
+				continue
+			}
+			if err := startListen(listenCTX, listen, dispatcher); err != nil {
+				Error.Printf("startListen:%v\n", err)
+				listenErrHost = append(listenErrHost, listen.Host)
+			}
+		}
+		for _, listen := range j.Listen {
+			i := 0
+			for ; i < len(listenErrHost); i++ {
+				if listenErrHost[i] == listen.Host {
+					break
+				}
+			}
+			if i == len(listenErrHost) {
+				listensucc = append(listensucc, listen.Host)
+			}
+		}
+		dialCTX, dialCancel := context.WithCancel(ctx)
+		var isFish bool
 		for _, dial := range j.Dial {
 			i := 0
 			for ; i < len(dialErrHost); i++ {
@@ -253,13 +289,11 @@ func ConnectHandler(c *gin.Context) {
 			if i != len(dialErrHost) {
 				continue
 			}
-			if err := startDial(ctx, dial, dispatcher); err != nil {
+			if err := startDial(dialCTX, dial, dispatcher, isFish); err != nil {
 				Error.Printf("startDial:%v\n", err)
 				dialErrHost = append(dialErrHost, dial.Host)
-
 			}
 		}
-
 		for _, dial := range j.Dial {
 			i := 0
 			for ; i < len(dialErrHost); i++ {
@@ -271,52 +305,60 @@ func ConnectHandler(c *gin.Context) {
 				dialsucc = append(dialsucc, dial.Host)
 			}
 		}
-
-		if len(dialsucc) == 0 {
+		if len(dialsucc) == 0 && len(listensucc) == 0 {
 			c.JSON(200, NormalRspStruct{
 				Code: 500,
-				Msg:  "connection failed",
+				Msg:  "Both dial and listen failed",
 			})
+			cleanUpOldTask()
+			statu = "ready"
+			Info.Println("cleanUpOldTask")
 			return
-		} else {
+		} else if len(dialsucc) == 0 {
+			channelSelect <- "L"
+			dialCancel()
 			c.JSON(200, NormalRspStruct{
 				Code: 200,
-				Msg:  "connection succeed",
+				Msg:  "dial failed,listen succeed",
+			})
+		} else if len(listensucc) == 0 {
+			channelSelect <- "D"
+			listenCancel()
+			c.JSON(200, NormalRspStruct{
+				Code: 200,
+				Msg:  "listen failed,dial succeed",
+			})
+		} else {
+			//channel select
+			//dial(LAN) first,after listen finish for 2S and dial still not finish,select listen
+			go func() {
+				select {
+				case <-dialFinish:
+					Info.Println("Choose Dial channel to use")
+					channelSelect <- "D"
+					dialCancel()
+				case <-listenFinish:
+					select {
+					case <-dialFinish:
+						channelSelect <- "D"
+						Info.Println("Choose Dial channel to use")
+						dialCancel()
+					case <-time.After(time.Second * time.Duration(_config.DialOrListenChooseTimeS)):
+						channelSelect <- "L"
+						Info.Println("Choose Listen channel to use")
+						listenCancel()
+					case <-ctx.Done():
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}()
+			c.JSON(200, NormalRspStruct{
+				Code: 200,
+				Msg:  "Both dial and listen succeed,server will chose faster one to use",
 			})
 		}
-		//check stat
-		go func() {
-			for {
-				f := 0
-				count := 10
-				for _, connList := range connMapD {
-					f = 2
-					if len(connList.([]*myKcp)) != 1 {
-						f = 1
-						for i, conn := range connList.([]*myKcp) {
-							err := conn.WriteMessage([]byte("ping"))
-							if err != nil {
-								connList = append(connList.([]*myKcp)[:i], connList.([]*myKcp)[:i+1]...)
-							}
-						}
-						count--
-					}
-				}
-				if count == 0 {
-					break
-				}
-				if f == 0 {
-					continue
-				}
-				if f == 2 {
-					break
-				}
-
-				time.Sleep(time.Second)
-			}
-			channelSelect <- "D"
-			go StratDelayCheck(ctx, flushRate)
-		}()
 
 	default:
 		c.JSON(200, NormalRspStruct{
@@ -368,10 +410,10 @@ func startListen(ctx context.Context, listen Listen, dispatcher *DispatcherStruc
 	}
 
 }
-func startDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct) error {
+func startDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct, isFish bool) error {
 	switch dial.Proto {
 	case "kcp":
-		if err := KcpDial(ctx, dial, dispatcher); err != nil {
+		if err := KcpDial(ctx, dial, dispatcher, isFish); err != nil {
 			return err
 		}
 		return nil
@@ -440,6 +482,7 @@ func DelayListFlusher(ctx context.Context, perSecond int) {
 }
 func ShutdownHandler(c *gin.Context) {
 	cleanUpOldTask()
+	statu = "ready"
 	Info.Println("cleanUpOldTask")
 	c.String(200, "ok")
 }
@@ -504,4 +547,12 @@ func EvenHandler(c *gin.Context) {
 		Code:      200,
 		EventList: result,
 	})
+}
+func statuHandler(c *gin.Context) {
+	select {
+	case <-channelSelect:
+		statu = "success"
+	default:
+	}
+	c.String(200, statu)
 }

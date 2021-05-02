@@ -106,7 +106,7 @@ func KcpAccept(ctx context.Context, listener *kcp.Listener, curChannel Channel, 
 			}
 		}
 		Info.Println("KCP Accept succ")
-		conn_.SetACKNoDelay(false)
+		conn_.SetACKNoDelay(_config.KcpNodelay)
 		conn_.SetNoDelay(curChannel.Param.Nodelay[0], curChannel.Param.Nodelay[1], curChannel.Param.Nodelay[2], curChannel.Param.Nodelay[3])
 		conn_.SetWindowSize(curChannel.Param.Window[0], curChannel.Param.Window[1])
 		conn := NewMykcp(conn_, 1400)
@@ -128,7 +128,7 @@ func KcpAccept(ctx context.Context, listener *kcp.Listener, curChannel Channel, 
 		}
 	}
 }
-func KcpDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct) error {
+func KcpDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct, isFish bool) error {
 	var curChannel Channel
 	for _, channel := range CFG.Channels {
 		if channel.Name == dial.Name && channel.Proto == dial.Proto {
@@ -145,7 +145,7 @@ func KcpDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct) error
 	if err != nil {
 		return err
 	}
-	conn_.SetACKNoDelay(false)
+	conn_.SetACKNoDelay(_config.KcpNodelay)
 	conn_.SetNoDelay(curChannel.Param.Nodelay[0], curChannel.Param.Nodelay[1], curChannel.Param.Nodelay[2], curChannel.Param.Nodelay[3])
 	conn_.SetWindowSize(curChannel.Param.Window[0], curChannel.Param.Window[1])
 	conn := NewMykcp(conn_, 1400)
@@ -160,6 +160,10 @@ func KcpDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct) error
 			if _, ok := connMapD[curChannel.Name]; ok {
 				connMapDlock.Lock()
 				connMapD[curChannel.Name] = append(connMapD[curChannel.Name].([]*myKcp), conn)
+				if !isFish {
+					isFish = true
+					dialFinish <- struct{}{}
+				}
 				connMapDlock.Unlock()
 			} else {
 				connMapDlock.Lock()

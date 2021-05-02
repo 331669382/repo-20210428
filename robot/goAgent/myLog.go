@@ -11,6 +11,7 @@ var (
 	Info    *log.Logger
 	Warning *log.Logger
 	Error   *log.Logger
+	Debug   *log.Logger
 )
 
 type TempLog struct {
@@ -54,6 +55,9 @@ func SetLog() error {
 
 	Error = log.New(io.MultiWriter(file, os.Stdout, tempLog),
 		"ERROR: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+	Debug = log.New(io.MultiWriter(file, os.Stdout, tempLog),
+		"Debug: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
 	return nil
 }

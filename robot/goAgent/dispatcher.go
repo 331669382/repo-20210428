@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -37,12 +36,17 @@ func dispatchWorker(ctx context.Context, str *DispatcherStruct) {
 			case msg := <-str.localInChan:
 				msgtype, topic := getMsgType(msg)
 				chNames := decideChan(msgtype, topic) //实际使用暂时只会有一个目标频道
-				fmt.Println(chNames, topic)
+				if _config.Mode == "debug" {
+					Debug.Printf("localInChan recv: msg:[%s],chname:[%v],topic:[%s]\n", string(msg), chNames, topic)
+				}
 				for _, chName := range chNames {
 					select {
 					case str.remoteOutChan[chName] <- msg: //这里如果block说明需要丢弃消息，做在这可能方便统计？
-						// case <-time.After(time.Millisecond * 100):
-						// 	remoteOutCount++
+					case <-time.After(time.Millisecond * time.Duration(_config.RemoteoutBlockTimeMs)):
+						if _config.Mode == "debug" {
+							Debug.Printf("remoteOut drop msg:[%s]\n", string(msg))
+						}
+						remoteOutCount++
 					}
 
 				}
@@ -56,10 +60,16 @@ func dispatchWorker(ctx context.Context, str *DispatcherStruct) {
 			for {
 				select {
 				case msg := <-remoteInChan:
+					if _config.Mode == "debug" {
+						Debug.Printf("remoteInChan recv msg:[%s]\n", string(msg))
+					}
 					select {
 					case str.localOutChan <- msg: //考虑下这个block的情况，就是Web UI没连上的情况
-						// case <-time.After(time.Millisecond * 500):
-						// 	localOutCount++
+					case <-time.After(time.Millisecond * time.Duration(_config.LocaloutBlockTimeMs)):
+						if _config.Mode == "debug" {
+							Debug.Printf("localOut drop msg:[%s]\n", string(msg))
+						}
+						localOutCount++
 					}
 				case <-ctx.Done():
 					return
@@ -86,40 +96,40 @@ func dispatchWorker(ctx context.Context, str *DispatcherStruct) {
 
 }
 
-type echoType int
+// type echoType int
 
-const (
-	notEcho        echoType = 0
-	isEcho         echoType = 1
-	isEchoResponse echoType = 2
-)
+// const (
+// 	notEcho        echoType = 0
+// 	isEcho         echoType = 1
+// 	isEchoResponse echoType = 2
+// )
 
-func checkEcho(msg Message) (echoType, int64, int64, Message) {
-	j := EchoMessage{}
-	if err := json.Unmarshal(msg, &j); err != nil {
-		Warning.Printf("checkEcho err:%v,msg:%s\n", err, string(msg))
-		return notEcho, -1, -1, nil
-	}
-	if j.Op == "echo" {
-		j.Op = "echoresponse"
-		newMsg, _ := json.Marshal(j)
-		return isEcho, -1, -1, newMsg
-	}
-	if j.Op == "echoresponse" {
-		return isEchoResponse, j.Time / 1e9, time.Now().UnixNano() - j.Time, nil
-	}
-	// if _, ok := m["op"]; ok {
-	// 	if m["op"].(string) == "echo" {
-	// 		m["op"] = "echoresponse"
-	// 		newMsg, _ := json.Marshal(m)
-	// 		return isEcho, -1, -1, newMsg
-	// 	}
-	// 	if m["op"].(string) == "echoresponse" {
-	// 		return isEcho, m["time"].(int64) / 1e9, time.Now().UnixNano() - m["time"].(int64), nil
-	// 	}
-	// }
-	return notEcho, -1, -1, nil
-}
+// func checkEcho(msg Message) (echoType, int64, int64, Message) {
+// 	j := EchoMessage{}
+// 	if err := json.Unmarshal(msg, &j); err != nil {
+// 		Warning.Printf("checkEcho err:%v,msg:%s\n", err, string(msg))
+// 		return notEcho, -1, -1, nil
+// 	}
+// 	if j.Op == "echo" {
+// 		j.Op = "echoresponse"
+// 		newMsg, _ := json.Marshal(j)
+// 		return isEcho, -1, -1, newMsg
+// 	}
+// 	if j.Op == "echoresponse" {
+// 		return isEchoResponse, j.Time / 1e9, time.Now().UnixNano() - j.Time, nil
+// 	}
+// if _, ok := m["op"]; ok {
+// 	if m["op"].(string) == "echo" {
+// 		m["op"] = "echoresponse"
+// 		newMsg, _ := json.Marshal(m)
+// 		return isEcho, -1, -1, newMsg
+// 	}
+// 	if m["op"].(string) == "echoresponse" {
+// 		return isEcho, m["time"].(int64) / 1e9, time.Now().UnixNano() - m["time"].(int64), nil
+// 	}
+// }
+// 	return notEcho, -1, -1, nil
+// }
 func getMsgType(msg Message) (msgtype string, topic string) {
 	m := make(map[string]interface{})
 	if err := json.Unmarshal(msg, &m); err != nil {
@@ -202,30 +212,33 @@ func remoteReadHandleFunc(ctx context.Context, conn MessageConn, remoteInChan ch
 			Info.Printf("channel [%s]Read closed msg\n", channelName)
 			return
 		}
-		switch eType, sendTime, delay, responseMsg := checkEcho(msg); eType {
-		case isEcho:
-			err := conn.WriteMessage(responseMsg)
-			if err != nil {
-				Warning.Printf("write echoresponse error:%v\n", err)
+		// switch eType, sendTime, delay, responseMsg := checkEcho(msg); eType {
+		// case isEcho:
+		// 	err := conn.WriteMessage(responseMsg)
+		// 	if err != nil {
+		// 		Warning.Printf("write echoresponse error:%v\n", err)
+		// 	}
+		// case isEchoResponse:
+		// 	delaylistLock.Lock()
+		// 	if _, ok := delayList[channelName].(map[int64]int64)[sendTime]; ok {
+		// 		delayList[channelName].(map[int64]int64)[sendTime] = (delay + delayList[channelName].(map[int64]int64)[sendTime]) / 2
+		// 	} else {
+		// 		delayList[channelName].(map[int64]int64)[sendTime] = delay
+		// 	}
+		// 	delaylistLock.Unlock()
+		// case notEcho:
+		select {
+		case remoteInChan <- msg:
+		case <-time.After(time.Millisecond * time.Duration(_config.RemoteinBlockTimeMs)):
+			if _config.Mode == "debug" {
+				Debug.Printf("remoteIn drop msg:[%s]\n", string(msg))
 			}
-		case isEchoResponse:
-			delaylistLock.Lock()
-			if _, ok := delayList[channelName].(map[int64]int64)[sendTime]; ok {
-				delayList[channelName].(map[int64]int64)[sendTime] = (delay + delayList[channelName].(map[int64]int64)[sendTime]) / 2
-			} else {
-				delayList[channelName].(map[int64]int64)[sendTime] = delay
-			}
-			delaylistLock.Unlock()
-		case notEcho:
-			select {
-			case remoteInChan <- msg:
-			// case <-time.After(time.Millisecond * 100):
-			// 	remoteInCount++
-			case <-ctx.Done():
-				Info.Printf("%s remoteRead stop\n", channelName)
-				break
-			}
+			remoteInCount++
+		case <-ctx.Done():
+			Info.Printf("%s remoteRead stop\n", channelName)
+			break
 		}
+		// }
 	}
 
 }
@@ -242,8 +255,11 @@ func localReadHandleFunc(ctx context.Context, ws *websocket.Conn, localInChan ch
 
 		select {
 		case localInChan <- msg:
-		// case <-time.After(time.Millisecond * 100):
-		// 	localInCount++
+		case <-time.After(time.Millisecond * time.Duration(_config.LocalinBlockTimeMs)):
+			if _config.Mode == "debug" {
+				Debug.Printf("localIn drop msg:[%s]\n", string(msg))
+			}
+			localInCount++
 		case <-ctx.Done():
 			Info.Println("localReadHandleFunc stop")
 			break

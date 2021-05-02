@@ -4,6 +4,16 @@ import (
 	"time"
 )
 
+type Config struct {
+	Mode                    string `json:"mode"`
+	AgentListenPort         int    `json:"agent_listen_port"`
+	DialOrListenChooseTimeS int    `json:"dial_or_listen_choose_time(s)"`
+	RemoteoutBlockTimeMs    int    `json:"remoteout_block_time(ms)"`
+	RemoteinBlockTimeMs     int    `json:"remotein_block_time(ms)"`
+	LocalinBlockTimeMs      int    `json:"localin_block_time(ms)"`
+	LocaloutBlockTimeMs     int    `json:"localout_block_time(ms)"`
+	KcpNodelay              bool   `json:"kcp_nodelay"`
+}
 type Channel struct {
 	Name  string `json:"name"`
 	Proto string `json:"proto"`
