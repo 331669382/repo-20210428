@@ -12,14 +12,13 @@ import (
 )
 
 func main() {
-	var _config common.Config
 	file, err := os.Open("config.config")
 	if err != nil {
 		fmt.Printf("Open ./config.config failed [Err:%v]", err)
 		return
 	}
 
-	err = json.NewDecoder(file).Decode(&_config)
+	err = json.NewDecoder(file).Decode(&common.RegistryConfig)
 	if err != nil {
 		fmt.Println("invalid config file")
 		return
@@ -28,13 +27,11 @@ func main() {
 		fmt.Printf("SetLog err:%v\n", err)
 		return
 	}
-	httpAddr := _config.Clientlisten
-	wsAddr := _config.Robotlisten
 
 	httpErrChan := make(chan error)
-	http.RunHttpServer(_config, httpAddr, httpErrChan)
+	http.RunHttpServer(httpErrChan)
 	wsErrChan := make(chan error)
-	err = websocket.RunWsServer(_config, wsAddr, wsErrChan)
+	err = websocket.RunWsServer(wsErrChan)
 	if err != nil {
 		fmt.Printf("RunWsServer err:%v\n", err)
 		return

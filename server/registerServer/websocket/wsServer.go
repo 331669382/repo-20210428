@@ -17,7 +17,7 @@ import (
 var OnlineRobotWs map[string]*websocket.Conn = make(map[string]*websocket.Conn)
 var RobotInfo map[string]common.AddressInfo = make(map[string]common.AddressInfo)
 
-func RunWsServer(conf common.Config, addr string, errChan chan error) error {
+func RunWsServer(errChan chan error) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{
@@ -88,12 +88,12 @@ func RunWsServer(conf common.Config, addr string, errChan chan error) error {
 			}
 		}
 	})
-	cert, err := tls.LoadX509KeyPair(conf.Servercertfile, conf.Serverkeyfile)
+	cert, err := tls.LoadX509KeyPair(common.RegistryConfig.Servercertfile, common.RegistryConfig.Serverkeyfile)
 	if err != nil {
 		return errors.New(fmt.Sprintf("server: loadkeys: %v", err))
 	}
 	certpool := x509.NewCertPool()
-	pem, err := ioutil.ReadFile(conf.Clientcafile)
+	pem, err := ioutil.ReadFile(common.RegistryConfig.Clientcafile)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Failed to read client certificate authority: %v", err))
 	}
@@ -105,10 +105,10 @@ func RunWsServer(conf common.Config, addr string, errChan chan error) error {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    certpool,
 	}
-	srv := &http.Server{Addr: addr, Handler: mux, TLSConfig: &config}
+	srv := &http.Server{Addr: common.RegistryConfig.Robotlisten, Handler: mux, TLSConfig: &config}
 	go func(srv *http.Server, errChan chan error) {
-		log.Info.Printf("Websocket server start listen at %s\n", addr)
-		err := srv.ListenAndServeTLS(conf.Servercertfile, conf.Serverkeyfile)
+		log.Info.Printf("Websocket server start listen at %s\n", common.RegistryConfig.Robotlisten)
+		err := srv.ListenAndServeTLS(common.RegistryConfig.Servercertfile, common.RegistryConfig.Serverkeyfile)
 		errChan <- err
 	}(srv, errChan)
 	return nil

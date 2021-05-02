@@ -11,13 +11,13 @@ import (
 	"mcurobot.com/registerServer/common"
 )
 
-func RunHttpServer(conf common.Config, addr string, errChan chan error) {
-	cert, err := tls.LoadX509KeyPair(conf.Servercertfile, conf.Serverkeyfile)
+func RunHttpServer(errChan chan error) {
+	cert, err := tls.LoadX509KeyPair(common.RegistryConfig.Servercertfile, common.RegistryConfig.Serverkeyfile)
 	if err != nil {
 		log.Fatalf("server: loadkeys: %s", err)
 	}
 	certpool := x509.NewCertPool()
-	pem, err := ioutil.ReadFile(conf.Clientcafile)
+	pem, err := ioutil.ReadFile(common.RegistryConfig.Clientcafile)
 	if err != nil {
 		log.Fatalf("Failed to read client certificate authority: %v", err)
 	}
@@ -35,9 +35,9 @@ func RunHttpServer(conf common.Config, addr string, errChan chan error) {
 	r.POST("/register", registerHandler)
 	r.POST("/query", queryHandler)
 	r.POST("/connect", connectHandler)
-	srv := &http.Server{Addr: addr, Handler: r, TLSConfig: &config}
+	srv := &http.Server{Addr: common.RegistryConfig.Clientlisten, Handler: r, TLSConfig: &config}
 	go func(errChan chan error) {
-		err := srv.ListenAndServeTLS(conf.Servercertfile, conf.Serverkeyfile)
+		err := srv.ListenAndServeTLS(common.RegistryConfig.Servercertfile, common.RegistryConfig.Serverkeyfile)
 		errChan <- err
 	}(errChan)
 	return

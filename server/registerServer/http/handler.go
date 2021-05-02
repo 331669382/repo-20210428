@@ -13,8 +13,6 @@ import (
 	"mcurobot.com/registerServer/websocket"
 )
 
-var TransitServer string = "47.112.96.50"	// 在registerServer/main.go覆盖此数值
-var TransitPort string = "45001"	// 在registerServer/main.go覆盖此数值
 var OnlineClient map[string]common.AddressInfo = make(map[string]common.AddressInfo)
 
 func registerHandler(c *gin.Context) {
@@ -152,12 +150,52 @@ func connectHandler(c *gin.Context) {
 	resp.Trans = j.Trans
 	if _, ok := websocket.OnlineRobotWs[j.Message.Target.ID]; ok {
 		if _, ok_ := websocket.RobotInfo[j.Message.Target.ID]; ok_ {
+			robotConnReq := common.ConnectReq{
+				Version: j.Version,
+				Type:    "connect-request",
+				Trans:   j.Trans,
+			}
+			robotConnReq.Entity.Role = "registry"
+			robotConnReq.Entity.ID = "registry.mcurobot.com"
+			robotConnReq.Message.Status = "new"
+			robotConnReq.Message.Target.ID = j.Entity.ID
+			robotConnReq.Message.Target.Role = "client"
+			err = websocket.OnlineRobotWs[j.Message.Target.ID].WriteJSON(robotConnReq)
+			if err != nil {
+				e := fmt.Sprintf("send connect request to robot err:%v", err)
+				resp.Message.Status = "error"
+				resp.Message.Error = e
+				c.JSON(200, resp)
+				log.Error.Println(e)
+				websocket.OnlineRobotWs[j.Message.Target.ID].Close()
+				return
+			}
+			postAuthResp := common.PostAuth{}
+			err = websocket.OnlineRobotWs[j.Message.Target.ID].ReadJSON(&postAuthResp)
+			if err != nil {
+				e := fmt.Sprintf("read postAuth response from robot err:%v", err)
+				resp.Message.Status = "error"
+				resp.Message.Error = e
+				c.JSON(200, resp)
+				log.Error.Println(e)
+				websocket.OnlineRobotWs[j.Message.Target.ID].Close()
+				return
+			}
+			if postAuthResp.Status != "success" {
+				e := fmt.Sprintf("the client is not in the robot's authorized list")
+				resp.Message.Status = "error"
+				resp.Message.Error = e
+				c.JSON(200, resp)
+				log.Error.Println(e)
+				websocket.OnlineRobotWs[j.Message.Target.ID].Close()
+				return
+			}
 			transitReqStruct := common.TransitRequest{
 				Token: "123",
 			}
 			transitReqStruct.ChannelInfo.Channels = common.DefaultChannel
 			js, _ := json.Marshal(transitReqStruct)
-			transitReq, err := http.NewRequest("POST", "http://"+TransitServer+":"+TransitPort+"/register", bytes.NewBuffer(js))
+			transitReq, err := http.NewRequest("POST", "http://"+common.RegistryConfig.Transistservers[0].Name+":"+common.RegistryConfig.Transistservers[0].Ctlport+"/register", bytes.NewBuffer(js))
 			if err != nil {
 				e := fmt.Sprintf("New register Request to transitServer err:%v", err)
 				resp.Message.Status = "error"
@@ -177,6 +215,7 @@ func connectHandler(c *gin.Context) {
 			}
 			respStruct := common.TransitResponse{}
 			transitRespBody, err := ioutil.ReadAll(transitResp.Body)
+			transitResp.Body.Close()
 			if err != nil {
 				e := fmt.Sprintf("Read transitSever register Response from transitServer err:%v", err)
 				resp.Message.Status = "error"
@@ -194,14 +233,29 @@ func connectHandler(c *gin.Context) {
 				log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
 				return
 			}
-			robotConnReq := common.ConnectReq{
+			registryConnResp := common.ConnectResp{
 				Version: j.Version,
-				Type:    "connect",
+				Type:    "connect-response",
 				Trans:   j.Trans,
 			}
+			registryConnResp.Entity.Role = "registry"
+			registryConnResp.Entity.ID = "registry.mcurobot.com"
+			registryConnResp.Message.Status = "pending"
+			registryConnResp.Message.Peer = OnlineClient[clientName]
+			registryConnResp.Message.Fin = false
 			for i, channelInfo := range transitReqStruct.ChannelInfo.Channels {
-				robotConnReq.Transit.Host = TransitServer
-				robotConnReq.Transit.Port = append(robotConnReq.Transit.Port, respStruct.LeftPort[i].Port)
+				if i == 0 {
+					registryConnResp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
+					registryConnResp.Message.Relay.Ctlport = respStruct.LeftPort[0].Port
+				}
+				if registryConnResp.Message.Relay.Ctlport+i != respStruct.LeftPort[i].Port {
+					e := "Read transitSever register Response err:discontinuity left port "
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
+					return
+				}
 				if channelInfo.Name != respStruct.LeftPort[i].Channel || channelInfo.Name != respStruct.RightPort[i].Channel {
 					e := "Read transitSever register Response err: response channel wrong"
 					resp.Message.Status = "error"
@@ -219,14 +273,10 @@ func connectHandler(c *gin.Context) {
 				log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
 				return
 			}
-			robotConnReq.Entity.Role = "registry"
-			robotConnReq.Entity.ID = clientName
-			robotConnReq.Message.Status = "new"
-			robotConnReq.Message.Target.ID = j.Message.Target.ID
-			robotConnReq.Message.Target.Role = "robot"
-			err = websocket.OnlineRobotWs[j.Message.Target.ID].WriteJSON(robotConnReq)
+
+			err = websocket.OnlineRobotWs[j.Message.Target.ID].WriteJSON(&registryConnResp)
 			if err != nil {
-				e := fmt.Sprintf("send connect request to robot err:%v", err)
+				e := fmt.Sprintf("write connect response to robot err:%v", err)
 				resp.Message.Status = "error"
 				resp.Message.Error = e
 				c.JSON(200, resp)
@@ -237,7 +287,7 @@ func connectHandler(c *gin.Context) {
 			robotConnResp := common.ConnectResp{}
 			err = websocket.OnlineRobotWs[j.Message.Target.ID].ReadJSON(&robotConnResp)
 			if err != nil {
-				e := fmt.Sprintf("read connect response from robot err:%v", err)
+				e := fmt.Sprintf("write connect response to robot err:%v", err)
 				resp.Message.Status = "error"
 				resp.Message.Error = e
 				c.JSON(200, resp)
@@ -256,7 +306,7 @@ func connectHandler(c *gin.Context) {
 			resp.Message.Status = "success"
 			peer := websocket.RobotInfo[j.Message.Target.ID]
 			peer.Addresses = append(peer.Addresses, common.Address{
-				Address: TransitServer,
+				Address: common.RegistryConfig.Transistservers[0].Name,
 				Port:    respStruct.RightPort[0].Port,
 			})
 			resp.Message.Peer = peer
@@ -265,9 +315,12 @@ func connectHandler(c *gin.Context) {
 			return
 		}
 	}
-	e := fmt.Sprintf("target robot of connect request offline")
+	e := fmt.Sprintf("target robot offline")
 	resp.Message.Status = "error"
 	resp.Message.Error = e
 	c.JSON(200, resp)
 	log.Error.Printf("%s,body:%s\n", e, body)
+}
+func T() {
+	fmt.Println(common.RegistryConfig)
 }
