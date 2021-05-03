@@ -304,12 +304,9 @@ func connectHandler(c *gin.Context) {
 				return
 			}
 			resp.Message.Status = "success"
-			peer := websocket.RobotInfo[j.Message.Target.ID]
-			peer.Addresses = append(peer.Addresses, common.Address{
-				Address: common.RegistryConfig.Transistservers[0].Name,
-				Port:    respStruct.RightPort[0].Port,
-			})
-			resp.Message.Peer = peer
+			resp.Message.Peer = websocket.RobotInfo[j.Message.Target.ID]
+			resp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
+			resp.Message.Relay.Ctlport = respStruct.RightPort[0].Port
 			log.Info.Printf("client [%s] connect request to robot [%s] success\n", clientName, j.Message.Target.ID)
 			c.JSON(200, resp)
 			return
