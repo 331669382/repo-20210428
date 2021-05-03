@@ -318,6 +318,7 @@ func main() {
 							statuRespBody, _ := ioutil.ReadAll(statuResp.Body)
 							statuResp.Body.Close()
 							if string(statuRespBody) != "success" {
+								Info.Println("p2p mode connect filed,try to connect transit server")
 								transitConn := AgentConnect{
 									Role:           "server",
 									Cleanupoldtask: clean,
@@ -361,6 +362,9 @@ func main() {
 									_state = "ready"
 									continue
 								}
+								Info.Println("Successfully connected to the transit server")
+							} else {
+								Info.Println("p2p mode connect successfully")
 							}
 							defaulfMsg.Message.Fin = false
 							err = ws.WriteJSON(defaulfMsg)
