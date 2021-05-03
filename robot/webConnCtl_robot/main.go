@@ -98,7 +98,7 @@ func main() {
 			go func(context.Context) {
 				for {
 					select {
-					case <-time.After(time.Second * 290):
+					case <-time.After(time.Second * 60):
 						err := getAddr()
 						if err != nil {
 							Error.Println(err)
