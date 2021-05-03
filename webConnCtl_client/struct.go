@@ -83,8 +83,10 @@ type Config struct {
 		Certificate string `json:"certificate"`
 		Key         string `json:"key"`
 	} `json:"entity"`
-	Authorizedclients []string `json:"authorizedclients"`
-	Adminport         string   `json:"adminport"`
+	WaitP2PConnectS     int64    `json:"waitp2pconnect(s)"`
+	WaitTransitConnectS int64    `json:"waittransitconnect(s)"`
+	Authorizedclients   []string `json:"authorizedclients"`
+	Adminport           string   `json:"adminport"`
 }
 
 type QueryReq struct {
@@ -178,7 +180,7 @@ type ConnectResp struct {
 		Peer   AddressInfo `json:"peer,omitempty"`
 		Relay  struct {
 			Name    string `json:"name"`
-			Ctlport string `json:"ctlport"`
+			Ctlport int    `json:"ctlport"`
 			Expire  string `json:"expire"`
 			Token   string `json:"token"`
 			Key     string `json:"key"`

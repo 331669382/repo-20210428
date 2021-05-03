@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -198,16 +199,16 @@ func connectHandler(c *gin.Context) {
 		return
 	}
 	Info.Println("send config to agent success")
-	conn := AgentConnect{
+	p2pConn := AgentConnect{
 		Role:           "client",
 		Cleanupoldtask: clean,
 	}
 	if j.Clean == unClean {
-		conn.Cleanupoldtask = unClean
+		p2pConn.Cleanupoldtask = unClean
 	}
 	for _, addr := range connResp.Message.Peer.Addresses {
 		for i, c := range _defaultChannel {
-			conn.Dial = append(conn.Dial, DialOrListen{
+			p2pConn.Dial = append(p2pConn.Dial, DialOrListen{
 				Name:  c.Name,
 				Proto: c.Proto,
 				Host:  addr.Address,
@@ -215,9 +216,9 @@ func connectHandler(c *gin.Context) {
 			})
 		}
 	}
-	agentConnReqBody, _ := json.Marshal(conn)
+	p2pConnReqBody, _ := json.Marshal(p2pConn)
 	Info.Println("send connect request to agent")
-	agentConnResp, err := http.DefaultClient.Post("http://"+_config.AgentURI+"/conn/connect", "application/json", bytes.NewBuffer(agentConnReqBody))
+	p2pConnResp, err := http.DefaultClient.Post("http://"+_config.AgentURI+"/conn/connect", "application/json", bytes.NewBuffer(p2pConnReqBody))
 	if err != nil {
 		e := fmt.Sprintf("send connect request to agent err:%v\n", err)
 		Error.Println(e)
@@ -236,13 +237,13 @@ func connectHandler(c *gin.Context) {
 		})
 		return
 	}
-	agentConnRespBody, err := ioutil.ReadAll(agentConnResp.Body)
-	agentConnResp.Body.Close()
+	p2pConnRespBody, err := ioutil.ReadAll(p2pConnResp.Body)
+	p2pConnResp.Body.Close()
 	if err != nil {
 		fmt.Println(err)
 	}
-	agentRespJson := NormalResp{}
-	err = json.Unmarshal(agentConnRespBody, &agentRespJson)
+	p2pRespJson := NormalResp{}
+	err = json.Unmarshal(p2pConnRespBody, &p2pRespJson)
 	if err != nil {
 		e := fmt.Sprintf("recv connectResp from agent err:%v,body:%s\n", err, string(confRespBody))
 		Error.Println(e)
@@ -261,8 +262,8 @@ func connectHandler(c *gin.Context) {
 		})
 		return
 	}
-	if agentRespJson.Code != succCode {
-		e := fmt.Sprintf(" agent connect error:%s", agentRespJson.Msg)
+	if p2pRespJson.Code != succCode {
+		e := fmt.Sprintf(" agent connect error:%s", p2pRespJson.Msg)
 		Error.Println(e)
 		defaulfMsg.Message.Status = "error"
 		defaulfMsg.Message.Error = e
@@ -279,10 +280,137 @@ func connectHandler(c *gin.Context) {
 		})
 		return
 	}
-	Info.Println("agent connect success")
+	time.Sleep(time.Second * time.Duration(_config.WaitP2PConnectS))
+	statuResp, err := http.Get("http://" + _config.AgentURI + "statu")
+	if err != nil {
+		e := fmt.Sprintf("get agent statu Resp err:%v", err)
+		Error.Println(e)
+		defaulfMsg.Message.Status = "error"
+		defaulfMsg.Message.Error = e
+		by_, _ := json.Marshal(defaulfMsg)
+		_, err_ := client.Post("https://"+_config.RegisterServer+"/connect", "application/json", bytes.NewBuffer(by_))
+		if err_ != nil {
+			e_ := fmt.Sprintf("send error report to registry failed:%v", err_)
+			Error.Println(e_)
+			e = fmt.Sprintf("%s and %s", e, e_)
+		}
+		c.JSON(200, NormalResp{
+			Code: errorCode,
+			Msg:  e,
+		})
+		return
+	}
+	statuRespBody, _ := ioutil.ReadAll(statuResp.Body)
+	statuResp.Body.Close()
+	if string(statuRespBody) != "success" {
+		Info.Println("p2p mode connect filed,try to connect transit server")
+		transitConn := AgentConnect{
+			Role:           "server",
+			Cleanupoldtask: clean,
+		}
+		for i, c := range _defaultChannel {
+			transitConn.Dial = append(transitConn.Dial, DialOrListen{
+				Name:  c.Name,
+				Proto: c.Proto,
+				Host:  connResp.Message.Relay.Name,
+				Port:  connResp.Message.Relay.Ctlport + i,
+			})
+		}
+		transitConnReqBody, _ := json.Marshal(transitConn)
+		tranConnReq, _ := http.NewRequest("POST", "http://"+_config.AgentURI+"/conn/connect", bytes.NewBuffer(transitConnReqBody))
+		transitConnResp, err := http.DefaultClient.Do(tranConnReq)
+		if err != nil {
+
+			e := fmt.Sprintf("send transit connect request to agent err:%v", err)
+			Error.Println(e)
+			defaulfMsg.Message.Status = "error"
+			defaulfMsg.Message.Error = e
+			by_, _ := json.Marshal(defaulfMsg)
+			_, err_ := client.Post("https://"+_config.RegisterServer+"/connect", "application/json", bytes.NewBuffer(by_))
+			if err_ != nil {
+				e_ := fmt.Sprintf("send connectResponse to registry failed:%v", err_)
+				Error.Println(e_)
+				e = fmt.Sprintf("%s and %s", e, e_)
+			}
+			c.JSON(200, NormalResp{
+				Code: errorCode,
+				Msg:  e,
+			})
+			return
+		}
+		transitConnRespBody, _ := ioutil.ReadAll(transitConnResp.Body)
+		transitConnResp.Body.Close()
+		transitConnRespJSON := NormalResp{}
+		json.Unmarshal(transitConnRespBody, &transitConnRespJSON)
+		if transitConnRespJSON.Code != succCode {
+			e := fmt.Sprintf("agent connect error %s", transitConnRespJSON.Msg)
+			Error.Println(e)
+			defaulfMsg.Message.Status = "error"
+			defaulfMsg.Message.Error = e
+			by_, _ := json.Marshal(defaulfMsg)
+			_, err_ := client.Post("https://"+_config.RegisterServer+"/connect", "application/json", bytes.NewBuffer(by_))
+			if err_ != nil {
+				e_ := fmt.Sprintf("send connectResponse to registry failed:%v", err_)
+				Error.Println(e_)
+				e = fmt.Sprintf("%s and %s", e, e_)
+			}
+			c.JSON(200, NormalResp{
+				Code: errorCode,
+				Msg:  e,
+			})
+			return
+		}
+		time.Sleep(time.Second * time.Duration(_config.WaitTransitConnectS))
+		statuResp, err := http.Get("http://" + _config.AgentURI + "statu")
+		if err != nil {
+			e := fmt.Sprintf("get agent statu Resp err:%v\n", err)
+			Error.Println(e)
+			defaulfMsg.Message.Status = "error"
+			defaulfMsg.Message.Error = e
+			by_, _ := json.Marshal(defaulfMsg)
+			_, err_ := client.Post("https://"+_config.RegisterServer+"/connect", "application/json", bytes.NewBuffer(by_))
+			if err_ != nil {
+				e_ := fmt.Sprintf("send connectResponse to registry failed:%v", err_)
+				Error.Println(e_)
+				e = fmt.Sprintf("%s and %s", e, e_)
+			}
+			c.JSON(200, NormalResp{
+				Code: errorCode,
+				Msg:  e,
+			})
+			return
+		}
+		statuRespBody, _ := ioutil.ReadAll(statuResp.Body)
+		statuResp.Body.Close()
+		if string(statuRespBody) != "success" {
+			e := "p2p connect and transit server connect filed"
+			Error.Println(e)
+			defaulfMsg.Message.Status = "error"
+			defaulfMsg.Message.Error = e
+			by_, _ := json.Marshal(defaulfMsg)
+			_, err_ := client.Post("https://"+_config.RegisterServer+"/connect", "application/json", bytes.NewBuffer(by_))
+			if err_ != nil {
+				e_ := fmt.Sprintf("send connectResponse to registry failed:%v", err_)
+				Error.Println(e_)
+				e = fmt.Sprintf("%s and %s", e, e_)
+			}
+			c.JSON(200, NormalResp{
+				Code: errorCode,
+				Msg:  e,
+			})
+			return
+		}
+		Info.Println("transit mode connect success")
+		c.JSON(200, NormalResp{
+			Code: 200,
+			Msg:  "transit mode connect success",
+		})
+		return
+	}
+	Info.Println("p2p mode connect success")
 	c.JSON(200, NormalResp{
 		Code: 200,
-		Msg:  "success",
+		Msg:  "p2p mode connect success",
 	})
 }
 func statusHandlet(c *gin.Context) {
