@@ -116,6 +116,7 @@ func main() {
 							Error.Printf("send robotConfig to registy err:%v, try to reconnect\n", err)
 							return
 						}
+						Info.Println("send register request successfully")
 					case <-ctx.Done():
 						return
 					}
@@ -281,7 +282,7 @@ func main() {
 							p2pConnReqBody, _ := json.Marshal(p2pConn)
 							p2pConnReq, _ := http.NewRequest("POST", "http://"+_config.AgentURI+"/conn/connect", bytes.NewBuffer(p2pConnReqBody))
 							p2pConnResp, err := http.DefaultClient.Do(p2pConnReq)
-							p2pWaitTime := _config.WaitP2PConnect
+							p2pWaitTime := _config.WaitP2PConnectS
 							if err != nil {
 								Error.Printf("send p2p connect request to agent err:%v,try to connect transitServer\n", err)
 								p2pWaitTime = 0
@@ -362,10 +363,36 @@ func main() {
 									_state = "ready"
 									continue
 								}
-								Info.Println("Successfully connected to the transit server")
-							} else {
-								Info.Println("p2p mode connect successfully")
+								time.Sleep(time.Second * time.Duration(_config.WaitTransitConnectS))
+								statuResp, err := http.Get("http://" + _config.AgentURI + "statu")
+								if err != nil {
+									Error.Printf("get agent statu Resp err:%v\n", err)
+									defaulfMsg.Message.Status = "error"
+									defaulfMsg.Message.Error = fmt.Sprintf("get agent statu Resp err:%v", err)
+									err := ws.WriteJSON(defaulfMsg)
+									if err != nil {
+										Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
+										break
+									}
+									_state = "ready"
+									continue
+								}
+								statuRespBody, _ := ioutil.ReadAll(statuResp.Body)
+								statuResp.Body.Close()
+								if string(statuRespBody) != "success" {
+									Error.Println("connect transit server error")
+									defaulfMsg.Message.Status = "error"
+									defaulfMsg.Message.Error = "p2p connect and transit server connect filed"
+									err := ws.WriteJSON(defaulfMsg)
+									if err != nil {
+										Error.Printf("send connectResponse to registy err:%v, try to reconnect\n", err)
+										break
+									}
+									_state = "ready"
+									continue
+								}
 							}
+							Info.Println("p2p mode connect successfully")
 							defaulfMsg.Message.Fin = false
 							err = ws.WriteJSON(defaulfMsg)
 							if err != nil {

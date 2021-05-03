@@ -83,10 +83,10 @@ type Config struct {
 		Certificate string `json:"certificate"`
 		Key         string `json:"key"`
 	} `json:"entity"`
-	WaitP2PConnect     int64    `json:"waitp2pconnect"`
-	WaitTransitConnect int64    `json:"waittransitconnect"`
-	Authorizedclients  []string `json:"authorizedclients"`
-	Adminport          string   `json:"adminport"`
+	WaitP2PConnectS     int64    `json:"waitp2pconnect(s)"`
+	WaitTransitConnectS int64    `json:"waittransitconnect(s)"`
+	Authorizedclients   []string `json:"authorizedclients"`
+	Adminport           string   `json:"adminport"`
 }
 
 type RegisterReq struct {
