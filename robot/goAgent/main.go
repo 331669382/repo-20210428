@@ -8,12 +8,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	ConfigFile = "goAgent.config"
+)
 var _config Config
 
 func main() {
-	file, err := os.Open("config.config")
+	file, err := os.Open(ConfigFile)
 	if err != nil {
-		fmt.Printf("Open ./config.config failed [Err:%v]", err)
+		fmt.Printf("Open %s failed [Err:%v]", ConfigFile, err)
 		return
 	}
 	err = json.NewDecoder(file).Decode(&_config)

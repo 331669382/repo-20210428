@@ -18,15 +18,19 @@ import (
 	"github.com/prestonTao/upnp"
 )
 
+const (
+	ConfigFile = "webConnCtl.config" //跟webConnCtl_client相同
+)
+
 var _rosbridgeURI string = "ws://0.0.0.0:9090"
 var _addressInfo AddressInfo
 var _config Config
 var _state string
 
 func main() {
-	file, err := os.Open("config.config")
+	file, err := os.Open(ConfigFile)
 	if err != nil {
-		fmt.Printf("Open ./config.config failed [Err:%v]", err)
+		fmt.Printf("Open %s failed [Err:%v]", ConfigFile, err)
 		return
 	}
 
