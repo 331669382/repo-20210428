@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ConfigFile = "webConnCtl.config"	//跟webConnCtl_robot相同
+	ConfigFile = "webConnCtl.config" //跟webConnCtl_robot相同
 )
 
 var _addressInfo AddressInfo
@@ -71,6 +71,7 @@ func getAddr() error {
 			Type:      ipType,
 			Address:   pair[0],
 			Prefixlen: pair[1],
+			Port:      _config.AgentBasePort,
 		})
 	}
 	return nil

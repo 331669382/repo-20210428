@@ -336,17 +336,17 @@ func ConnectHandler(c *gin.Context) {
 				case <-dialFinish:
 					Info.Println("Choose Dial channel to use")
 					channelSelect <- "D"
-					dialCancel()
+					listenCancel()
 				case <-listenFinish:
 					select {
 					case <-dialFinish:
 						channelSelect <- "D"
 						Info.Println("Choose Dial channel to use")
-						dialCancel()
+						listenCancel()
 					case <-time.After(time.Second * time.Duration(_config.DialOrListenChooseTimeS)):
 						channelSelect <- "L"
 						Info.Println("Choose Listen channel to use")
-						listenCancel()
+						dialCancel()
 					case <-ctx.Done():
 						return
 					}
