@@ -404,6 +404,11 @@ func startListen(ctx context.Context, listen Listen, dispatcher *DispatcherStruc
 			return err
 		}
 		return nil
+	case "tcp":
+		if err := TcpListen(ctx, listen, dispatcher); err != nil {
+			return err
+		}
+		return nil
 
 	default:
 		return errors.New("can't match proto ")
@@ -414,6 +419,11 @@ func startDial(ctx context.Context, dial Dial, dispatcher *DispatcherStruct, isF
 	switch dial.Proto {
 	case "kcp":
 		if err := KcpDial(ctx, dial, dispatcher, isFish); err != nil {
+			return err
+		}
+		return nil
+	case "tcp":
+		if err := TcpDial(ctx, dial, dispatcher, isFish); err != nil {
 			return err
 		}
 		return nil
