@@ -285,24 +285,20 @@ func connectHandler(c *gin.Context) {
 				return
 			}
 			robotConnResp := common.ConnectResp{}
-			err = websocket.OnlineRobotWs[j.Message.Target.ID].ReadJSON(&robotConnResp)
-			if err != nil {
-				e := fmt.Sprintf("write connect response to robot err:%v", err)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Println(e)
-				websocket.OnlineRobotWs[j.Message.Target.ID].Close()
-				return
-			}
-			if robotConnResp.Message.Status != "pending" {
-				e := fmt.Sprintf("robot refused the connection,err:%s", robotConnResp.Message.Error)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Println(e)
-				return
-			}
+			go func() {
+				err = websocket.OnlineRobotWs[j.Message.Target.ID].ReadJSON(&robotConnResp)
+				if err != nil {
+					e := fmt.Sprintf("write connect response to robot err:%v", err)
+					log.Error.Println(e)
+					websocket.OnlineRobotWs[j.Message.Target.ID].Close()
+					return
+				}
+				if robotConnResp.Message.Status != "pending" {
+					e := fmt.Sprintf("robot refused the connection,err:%s", robotConnResp.Message.Error)
+					log.Error.Println(e)
+					return
+				}
+			}()
 			resp.Message.Status = "success"
 			resp.Message.Peer = websocket.RobotInfo[j.Message.Target.ID]
 			resp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
