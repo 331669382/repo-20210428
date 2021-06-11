@@ -237,8 +237,8 @@ func connectHandler(c *gin.Context) {
 					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
 					return
 				}
-				if respStruct.Code != 200 {
-					e := fmt.Sprintf("Read transitSever register Response respStruct:%v", respStruct)
+				if respStruct.Code != 200 || len(respStruct.LeftPort) == 0 || len(respStruct.RightPort) == 0 {
+					e := fmt.Sprintf("Read transitSever register Response error,respStruct:%v", respStruct)
 					resp.Message.Status = "error"
 					resp.Message.Error = e
 					log.Error.Println(e)
@@ -246,7 +246,6 @@ func connectHandler(c *gin.Context) {
 					return
 				}
 			}
-
 			registryConnResp := common.ConnectResp{
 				Version: j.Version,
 				Type:    "connect-response",
