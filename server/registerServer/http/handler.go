@@ -241,8 +241,8 @@ func connectHandler(c *gin.Context) {
 					e := fmt.Sprintf("Read transitSever register Response respStruct:%v", respStruct)
 					resp.Message.Status = "error"
 					resp.Message.Error = e
+					log.Error.Println(e)
 					c.JSON(200, resp)
-					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
 					return
 				}
 			}
