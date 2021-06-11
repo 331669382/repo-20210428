@@ -316,8 +316,10 @@ func connectHandler(c *gin.Context) {
 			}()
 			resp.Message.Status = "success"
 			resp.Message.Peer = websocket.RobotInfo[j.Message.Target.ID]
-			resp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
-			resp.Message.Relay.Ctlport = respStruct.RightPort[0].Port
+			if common.RegistryConfig.Mode != "p2p" {
+				resp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
+				resp.Message.Relay.Ctlport = respStruct.RightPort[0].Port
+			}
 			log.Info.Printf("client [%s] connect request to robot [%s] success\n", clientName, j.Message.Target.ID)
 			c.JSON(200, resp)
 			return
