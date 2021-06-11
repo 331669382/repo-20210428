@@ -12,6 +12,7 @@ type Config struct {
 		Name    string `json:"name"`
 		Ctlport string `json:"ctlport"`
 	} `json:"transistServers"`
+	Mode string `json:"mode"` //p2p-只用p2p，其他值两个都用
 }
 
 type AddressInfo struct {

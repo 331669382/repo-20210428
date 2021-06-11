@@ -193,46 +193,60 @@ func connectHandler(c *gin.Context) {
 			transitReqStruct := common.TransitRequest{
 				Token: "123",
 			}
-			transitReqStruct.ChannelInfo.Channels = common.DefaultChannel
-			js, _ := json.Marshal(transitReqStruct)
-			transitReq, err := http.NewRequest("POST", "http://"+common.RegistryConfig.Transistservers[0].Name+":"+common.RegistryConfig.Transistservers[0].Ctlport+"/register", bytes.NewBuffer(js))
-			if err != nil {
-				e := fmt.Sprintf("New register Request to transitServer err:%v", err)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Println(e)
-				return
-			}
-			transitResp, err := http.DefaultClient.Do(transitReq)
-			if err != nil {
-				e := fmt.Sprintf("Do register Request to transitServer err:%v", err)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Println(e)
-				return
-			}
 			respStruct := common.TransitResponse{}
-			transitRespBody, err := ioutil.ReadAll(transitResp.Body)
-			transitResp.Body.Close()
-			if err != nil {
-				e := fmt.Sprintf("Read transitSever register Response from transitServer err:%v", err)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Println(e)
-				return
+			transitRespBody := []byte{}
+			if common.RegistryConfig.Mode != "p2p" {
+
+				transitReqStruct.ChannelInfo.Channels = common.DefaultChannel
+				js, _ := json.Marshal(transitReqStruct)
+				transitReq, err := http.NewRequest("POST", "http://"+common.RegistryConfig.Transistservers[0].Name+":"+common.RegistryConfig.Transistservers[0].Ctlport+"/register", bytes.NewBuffer(js))
+				if err != nil {
+					e := fmt.Sprintf("New register Request to transitServer err:%v", err)
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Println(e)
+					return
+				}
+				transitResp, err := http.DefaultClient.Do(transitReq)
+				if err != nil {
+					e := fmt.Sprintf("Do register Request to transitServer err:%v", err)
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Println(e)
+					return
+				}
+
+				transitRespBody, err := ioutil.ReadAll(transitResp.Body)
+				transitResp.Body.Close()
+				if err != nil {
+					e := fmt.Sprintf("Read transitSever register Response from transitServer err:%v", err)
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Println(e)
+					return
+				}
+				err = json.Unmarshal(transitRespBody, &respStruct)
+				if err != nil {
+					e := fmt.Sprintf("Read transitSever register Response json from transitServer err:%v", err)
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
+					return
+				}
+				if respStruct.Code != 200 {
+					e := fmt.Sprintf("Read transitSever register Response respStruct:%v", respStruct)
+					resp.Message.Status = "error"
+					resp.Message.Error = e
+					c.JSON(200, resp)
+					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
+					return
+				}
 			}
-			err = json.Unmarshal(transitRespBody, &respStruct)
-			if err != nil {
-				e := fmt.Sprintf("Read transitSever register Response json from transitServer err:%v", err)
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
-				return
-			}
+
 			registryConnResp := common.ConnectResp{
 				Version: j.Version,
 				Type:    "connect-response",
@@ -243,35 +257,37 @@ func connectHandler(c *gin.Context) {
 			registryConnResp.Message.Status = "pending"
 			registryConnResp.Message.Peer = OnlineClient[clientName]
 			registryConnResp.Message.Fin = false
-			for i, channelInfo := range transitReqStruct.ChannelInfo.Channels {
-				if i == 0 {
-					registryConnResp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
-					registryConnResp.Message.Relay.Ctlport = respStruct.LeftPort[0].Port
+			if common.RegistryConfig.Mode != "p2p" {
+				for i, channelInfo := range transitReqStruct.ChannelInfo.Channels {
+					if i == 0 {
+						registryConnResp.Message.Relay.Name = common.RegistryConfig.Transistservers[0].Name
+						registryConnResp.Message.Relay.Ctlport = respStruct.LeftPort[0].Port
+					}
+					if registryConnResp.Message.Relay.Ctlport+i != respStruct.LeftPort[i].Port {
+						e := "Read transitSever register Response err:discontinuity left port "
+						resp.Message.Status = "error"
+						resp.Message.Error = e
+						c.JSON(200, resp)
+						log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
+						return
+					}
+					if channelInfo.Name != respStruct.LeftPort[i].Channel || channelInfo.Name != respStruct.RightPort[i].Channel {
+						e := "Read transitSever register Response err: response channel wrong"
+						resp.Message.Status = "error"
+						resp.Message.Error = e
+						c.JSON(200, resp)
+						log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
+						return
+					}
 				}
-				if registryConnResp.Message.Relay.Ctlport+i != respStruct.LeftPort[i].Port {
-					e := "Read transitSever register Response err:discontinuity left port "
+				if respStruct.LeftPort == nil || respStruct.RightPort == nil {
+					e := "Read register Response err: respStruct LeftPort or RightPort is nil"
 					resp.Message.Status = "error"
 					resp.Message.Error = e
 					c.JSON(200, resp)
 					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
 					return
 				}
-				if channelInfo.Name != respStruct.LeftPort[i].Channel || channelInfo.Name != respStruct.RightPort[i].Channel {
-					e := "Read transitSever register Response err: response channel wrong"
-					resp.Message.Status = "error"
-					resp.Message.Error = e
-					c.JSON(200, resp)
-					log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
-					return
-				}
-			}
-			if respStruct.LeftPort == nil || respStruct.RightPort == nil {
-				e := "Read register Response err: respStruct LeftPort or RightPort is nil"
-				resp.Message.Status = "error"
-				resp.Message.Error = e
-				c.JSON(200, resp)
-				log.Error.Printf("%s,body:%s\n", e, string(transitRespBody))
-				return
 			}
 
 			err = websocket.OnlineRobotWs[j.Message.Target.ID].WriteJSON(&registryConnResp)
